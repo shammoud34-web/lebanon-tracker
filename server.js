@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(__dirname));
 
 console.log('[DB] Connecting to:', process.env.MONGODB_URI?.substring(0, 40) + '...');
 mongoose.connect(process.env.MONGODB_URI)
@@ -91,6 +92,10 @@ app.get('/incidents/stats', async (req, res) => {
 // GET /config — public client configuration
 app.get('/config', (req, res) => {
   res.json({ mapboxToken: process.env.MAPBOX_TOKEN });
+});
+
+app.get('/', (_req, res) => {
+  res.sendFile(__dirname + '/index.html');
 });
 
 // GET /health — server status and last pipeline run time
