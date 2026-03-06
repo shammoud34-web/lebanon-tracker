@@ -282,9 +282,7 @@
 </div>
 
 <script>
-  mapboxgl.accessToken = 'REPLACE_WITH_ENV_TOKEN';
-
-  const API = 'https://lebanon-tracker-production.up.railway.app/incidents';
+  const API = 'https://lebanon-tracker-production.up.railway.app';
   const REFRESH_SECS = 300;
   const DARK_STYLE = 'mapbox://styles/mapbox/dark-v11';
   const SAT_STYLE  = 'mapbox://styles/mapbox/satellite-streets-v12';
@@ -303,34 +301,41 @@
   let secsLeft = REFRESH_SECS;
   let mapReady = false;
 
-  // ── Init map ──────────────────────────────────────────
-  map = new mapboxgl.Map({
-    container: 'map',
-    style: DARK_STYLE,
-    center: [35.86, 33.85],
-    zoom: 8,
-    attributionControl: false,
-  });
+  // ── Bootstrap: fetch config then init map ─────────────
+  async function init() {
+    const config = await fetch(`${API}/config`).then(r => r.json());
+    mapboxgl.accessToken = config.mapboxToken;
 
-  map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
-  map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+    map = new mapboxgl.Map({
+      container: 'map',
+      style: DARK_STYLE,
+      center: [35.86, 33.85],
+      zoom: 8,
+      attributionControl: false,
+    });
 
-  map.on('error', (e) => console.error('Mapbox error:', e));
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
 
-  map.on('load', () => {
-    mapReady = true;
-    setTimeout(() => map.resize(), 100);
-    addLayers();
-    fetchIncidents();
-  });
+    map.on('error', (e) => console.error('Mapbox error:', e));
 
-  // Re-add layers after style change
-  map.on('style.load', () => {
-    if (mapReady) {
+    map.on('load', () => {
+      mapReady = true;
+      setTimeout(() => map.resize(), 100);
       addLayers();
-      updateMapSource();
-    }
-  });
+      fetchIncidents();
+    });
+
+    // Re-add layers after style change
+    map.on('style.load', () => {
+      if (mapReady) {
+        addLayers();
+        updateMapSource();
+      }
+    });
+  }
+
+  init();
 
   // ── GeoJSON source + layers ───────────────────────────
   function addLayers() {
@@ -489,7 +494,7 @@
   async function fetchIncidents() {
     setStatus('loading', 'Fetching…');
     try {
-      const res = await fetch(API);
+      const res = await fetch(`${API}/incidents`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       allIncidents = (json.data || []).filter(i => i.lat && i.lng);

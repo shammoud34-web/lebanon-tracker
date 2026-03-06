@@ -88,6 +88,11 @@ app.get('/incidents/stats', async (req, res) => {
   }
 });
 
+// GET /config — public client configuration
+app.get('/config', (req, res) => {
+  res.json({ mapboxToken: process.env.MAPBOX_TOKEN });
+});
+
 // GET /health — server status and last pipeline run time
 app.get('/health', (req, res) => {
   res.json({
