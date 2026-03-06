@@ -5,7 +5,6 @@ const axios = require('axios');
 const Incident = require('../models/Incident');
 
 const rssParser = new RSSParser();
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const RSS_FEEDS = [
   { url: 'https://www.the961.com/feed', source: 'the961' },
@@ -34,6 +33,7 @@ function passesKeywordFilter(title, content) {
 }
 
 async function classifyArticle(title, content) {
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   console.log(`[Groq] Classifying: "${title}"`);
   const response = await groq.chat.completions.create({
     model: 'llama-3.1-8b-instant',
