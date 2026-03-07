@@ -55,8 +55,31 @@
     #status-dot.error   { background: #ef4444; box-shadow: 0 0 6px #ef4444; animation: none; }
     @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
+    /* ── Menu toggle (mobile only) ── */
+    #menu-toggle {
+      display: none;
+      background: none;
+      border: none;
+      color: #e2e8f0;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+      margin-right: 10px;
+      line-height: 1;
+    }
+
     /* ── Layout ── */
-    .layout { display: flex; flex: 1; overflow: hidden; }
+    .layout { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+    /* ── Sidebar overlay (mobile) ── */
+    #sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 19;
+    }
+    #sidebar-overlay.visible { display: block; }
 
     /* ── Sidebar ── */
     aside {
@@ -68,6 +91,21 @@
       flex-direction: column;
       overflow: hidden;
     }
+
+    /* ── Sidebar close button (mobile only) ── */
+    #sidebar-close {
+      display: none;
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 2px 6px;
+      line-height: 1;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    #sidebar-close:hover { color: #e2e8f0; }
     .sidebar-top {
       padding: 14px 14px 10px;
       border-bottom: 1px solid #1e293b;
@@ -245,12 +283,45 @@
       gap: 3px;
     }
     .popup-meta span { color: #94a3b8; }
+
+    /* ── Mobile ── */
+    @media (max-width: 767px) {
+      header { padding: 10px 14px; }
+      header h1 { font-size: 14px; }
+
+      #menu-toggle { display: block; }
+
+      aside {
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        width: 85%;
+        max-width: 300px;
+        z-index: 20;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        border-right: none;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+      }
+      aside.open { transform: translateX(0); }
+
+      #sidebar-close { display: block; }
+
+      .sidebar-top { padding: 12px; }
+      #sidebar-close { display: block; margin-bottom: 8px; }
+      #search { margin-bottom: 8px; }
+      .filters { flex-wrap: wrap; }
+
+      .mapboxgl-popup-content { max-width: calc(100vw - 40px) !important; }
+    }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>Lebanon <span>Incident</span> Tracker</h1>
+  <div style="display:flex;align-items:center;">
+    <button id="menu-toggle" aria-label="Open sidebar">☰</button>
+    <h1>Lebanon <span>Incident</span> Tracker</h1>
+  </div>
   <div id="status">
     <div id="status-dot" class="loading"></div>
     <span id="status-text">Loading…</span>
@@ -258,9 +329,12 @@
 </header>
 
 <div class="layout">
+  <div id="sidebar-overlay"></div>
+
   <!-- Sidebar -->
   <aside>
     <div class="sidebar-top">
+      <button id="sidebar-close" aria-label="Close sidebar">×</button>
       <input id="search" type="text" placeholder="Search incidents…" autocomplete="off">
       <div class="filters">
         <button class="filter-btn active" data-sev="all">All</button>
@@ -336,6 +410,19 @@
   }
 
   init();
+
+  // ── Mobile sidebar toggle ─────────────────────────────
+  function openSidebar() {
+    document.querySelector('aside').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('visible');
+  }
+  function closeSidebar() {
+    document.querySelector('aside').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('visible');
+  }
+  document.getElementById('menu-toggle').addEventListener('click', openSidebar);
+  document.getElementById('sidebar-close').addEventListener('click', closeSidebar);
+  document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
 
   // ── GeoJSON source + layers ───────────────────────────
   function addLayers() {
@@ -555,7 +642,10 @@
     `).join('');
 
     el.querySelectorAll('.list-item').forEach(row => {
-      row.addEventListener('click', () => selectItem(row.dataset.id, true));
+      row.addEventListener('click', () => {
+        selectItem(row.dataset.id, true);
+        closeSidebar();
+      });
     });
   }
 
