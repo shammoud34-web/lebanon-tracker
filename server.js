@@ -95,30 +95,21 @@ let flightCache = null;
 let flightCacheTime = 0;
 const FLIGHT_CACHE_TTL = 30 * 1000;
 
-// GET /flights — live aircraft in Lebanese airspace via ADS-B Exchange (RapidAPI)
+const LB_BOUNDS = { latMin: 33.0, latMax: 34.7, lngMin: 35.1, lngMax: 36.6 };
+
+// GET /flights — live aircraft in Lebanese airspace via adsb.fi (free, no key)
 app.get('/flights', async (req, res) => {
   const now = Date.now();
   if (flightCache && (now - flightCacheTime) < FLIGHT_CACHE_TTL) {
     return res.json({ success: true, cached: true, data: flightCache });
   }
 
-  if (!process.env.RAPIDAPI_KEY) {
-    console.warn('[Flights] RAPIDAPI_KEY not set — returning empty');
-    return res.json({ success: true, data: [], message: 'RAPIDAPI_KEY not configured' });
-  }
-
   try {
     const r = await axios.get(
-      'https://adsbexchange-com1.p.rapidapi.com/v2/lat/33.85/lon/35.86/dist/100/',
-      {
-        timeout: 10000,
-        headers: {
-          'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
-          'X-RapidAPI-Host': 'adsbexchange-com1.p.rapidapi.com',
-        },
-      }
+      'https://api.adsb.fi/v1/geo?lat=33.85&lon=35.86&radius=150',
+      { timeout: 10000, headers: { 'User-Agent': 'lebanon-tracker/1.0' } }
     );
-    console.log(`[Flights] ADS-B Exchange responded: HTTP ${r.status}, ac=${(r.data.ac || []).length}`);
+    console.log(`[Flights] adsb.fi responded: HTTP ${r.status}, ac=${(r.data.ac || []).length}`);
 
     const flights = (r.data.ac || [])
       .map(a => ({
@@ -132,15 +123,19 @@ app.get('/flights', async (req, res) => {
         onGround: a.alt_baro === 'ground',
         squawk:   a.squawk || null,
       }))
-      .filter(f => f.lat != null && f.lng != null);
+      .filter(f =>
+        f.lat != null && f.lng != null &&
+        f.lat >= LB_BOUNDS.latMin && f.lat <= LB_BOUNDS.latMax &&
+        f.lng >= LB_BOUNDS.lngMin && f.lng <= LB_BOUNDS.lngMax
+      );
 
     flightCache = flights;
     flightCacheTime = now;
 
-    console.log(`[Flights] Returning ${flights.length} aircraft`);
+    console.log(`[Flights] Returning ${flights.length} aircraft in Lebanese airspace`);
     res.json({ success: true, cached: false, data: flights });
   } catch (err) {
-    console.error(`[Flights] ADS-B Exchange failed: ${err.message} | status=${err.response?.status} | data=${JSON.stringify(err.response?.data || '').slice(0, 200)}`);
+    console.error(`[Flights] adsb.fi failed: ${err.message} | status=${err.response?.status}`);
     if (flightCache) {
       console.warn('[Flights] Returning stale cache');
       return res.json({ success: true, cached: true, stale: true, data: flightCache });
