@@ -5,7 +5,7 @@ const Incident = require('../models/Incident');
 const { LEBANON_KEYWORDS } = require('./pipeline');
 
 // Public Telegram channel usernames — verified via https://t.me/s/<username>
-const CHANNELS = ['naharnet', 'AlHadath', 'lbci', 'aljadeed', 'mtvlebanon'];
+const CHANNELS = ['naharnet', 'AlHadath', 'lbcilebanon', 'new_tv', 'mtvlb'];
 
 // Place-name keywords used for location extraction (subset of LEBANON_KEYWORDS)
 const PLACE_KEYWORDS = [
