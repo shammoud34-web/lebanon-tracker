@@ -89,26 +89,27 @@ async function startTelegramIngestion() {
   try {
     const apiId = parseInt(process.env.TELEGRAM_API_ID, 10);
     const apiHash = process.env.TELEGRAM_API_HASH;
-    const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
-    if (!apiId || !apiHash || !botToken) {
+    if (!apiId || !apiHash || !process.env.TELEGRAM_SESSION) {
       console.warn('[Telegram] Missing credentials — ingestion disabled');
       return;
     }
 
-    const session = new StringSession(process.env.TELEGRAM_SESSION || '');
+    const session = new StringSession(process.env.TELEGRAM_SESSION);
     const client = new TelegramClient(session, apiId, apiHash, {
       connectionRetries: 5,
     });
 
     try {
-      await client.start({ botAuthToken: botToken });
+      await client.connect();
       console.log('[Telegram] Client connected');
 
-      const sessionStr = client.session.save();
-      if (sessionStr && !process.env.TELEGRAM_SESSION) {
-        console.log(`[Telegram] Save this session string to TELEGRAM_SESSION env var: ${sessionStr}`);
+      if (!await client.isUserAuthorized()) {
+        console.log('[Telegram] Not authorized — TELEGRAM_SESSION may be invalid');
+        return;
       }
+
+      console.log('[Telegram] User authorized');
 
       // Populate entity cache so numeric channel IDs can be resolved
       console.log('[Telegram] Starting dialog cache...');
