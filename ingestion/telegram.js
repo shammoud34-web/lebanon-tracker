@@ -102,6 +102,19 @@ async function startTelegramIngestion() {
     return;
   }
 
+  // Debug: list all joined dialogs so we can verify correct channel usernames
+  try {
+    const dialogs = await client.getDialogs({});
+    console.log(`[Telegram] Found ${dialogs.length} dialogs:`);
+    for (const dialog of dialogs) {
+      const title = dialog.title || dialog.name || '(no title)';
+      const username = dialog.entity?.username ? `@${dialog.entity.username}` : '(no username)';
+      console.log(`[Telegram] Dialog: "${title}" → ${username}`);
+    }
+  } catch (err) {
+    console.error(`[Telegram] Failed to list dialogs: ${err.message}`);
+  }
+
   // Initial poll then every 60 seconds
   await poll(client);
   setInterval(() => poll(client), 60 * 1000);
