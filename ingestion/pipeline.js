@@ -7,17 +7,20 @@ const Incident = require('../models/Incident');
 const rssParser = new RSSParser();
 
 const RSS_FEEDS = [
-  { url: 'https://www.the961.com/feed', source: 'the961' },
   { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
   { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
   { url: 'https://www.nna-leb.gov.lb/en/rss', source: 'nna' },
+  { url: 'http://feeds.reuters.com/reuters/middleeastNews', source: 'reuters' },
+  { url: 'https://today.lorientlejour.com/rss', source: 'lorient' },
+  { url: 'https://reliefweb.int/country/lbn/rss.xml', source: 'reliefweb' },
 ];
 
 const LEBANON_KEYWORDS = [
   'lebanon', 'beirut', 'dahiyeh', 'hezbollah', 'nabatieh', 'bekaa',
   'south lebanon', 'sidon', 'tyre', 'baalbek', 'haret hreik', 'dahieh',
   'aita', 'khiyam', 'bint jbeil', 'tripoli', 'zahlé', 'zahle', 'baabda',
-  'ghobeiry',
+  'ghobeiry', 'hermel', 'zahle', 'jounieh', 'chouf', 'akkar', 'marjayoun',
+  'hasbaya', 'rashaya', 'qana', 'naqoura', 'qlayaat',
 ];
 
 const CLASSIFY_PROMPT = `You are an incident classifier for Lebanon. Given this news article, extract:
