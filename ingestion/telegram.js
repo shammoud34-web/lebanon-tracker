@@ -3,7 +3,7 @@ const { StringSession } = require('telegram/sessions');
 const Incident = require('../models/Incident');
 const { LEBANON_KEYWORDS } = require('./pipeline');
 
-const CHANNELS = ['ojnews', 'naharnet', 'alhadathtv', 'channelnewslb', 'aljadeedtv'];
+const CHANNELS = ['OJLebanese', 'AlJadeedNews', 'AlHadathTV', 'NaharnetEnglish', 'LBCINews'];
 
 // Place-name keywords used for location extraction (subset of LEBANON_KEYWORDS)
 const PLACE_KEYWORDS = [
