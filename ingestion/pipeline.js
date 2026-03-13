@@ -9,9 +9,8 @@ const rssParser = new RSSParser();
 const RSS_FEEDS = [
   { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
   { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
-  { url: 'https://www.naharnet.com/stories/en/rss.xml', source: 'naharnet' },
-  { url: 'https://feeds.reuters.com/Reuters/worldNews', source: 'reuters' },
-  { url: 'https://today.lorientlejour.com/feed', source: 'lorient' },
+  { url: 'https://www.middleeasteye.net/rss', source: 'mee' },
+  { url: 'https://feeds.apnews.com/rss/apf-middleeast', source: 'ap' },
 ];
 
 const LEBANON_KEYWORDS = [
