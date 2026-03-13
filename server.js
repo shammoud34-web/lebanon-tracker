@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const axios = require('axios');
 const { startPipeline, runPipeline, getLastPipelineRun } = require('./ingestion/pipeline');
 const Incident = require('./models/Incident');
 
@@ -86,6 +87,57 @@ app.get('/incidents/stats', async (req, res) => {
   } catch (err) {
     console.error('[API] Error fetching stats:', err.message);
     res.status(500).json({ success: false, error: 'Failed to fetch stats' });
+  }
+});
+
+// Flight cache
+let flightCache = null;
+let flightCacheTime = 0;
+const FLIGHT_CACHE_TTL = 30 * 1000;
+
+// GET /flights — live aircraft in Lebanese airspace via OpenSky Network
+app.get('/flights', async (req, res) => {
+  try {
+    const now = Date.now();
+    if (flightCache && (now - flightCacheTime) < FLIGHT_CACHE_TTL) {
+      return res.json({ success: true, cached: true, data: flightCache });
+    }
+
+    const response = await axios.get(
+      'https://opensky-network.org/api/states/all?lamin=33.0&lomin=35.1&lamax=34.7&lomax=36.6',
+      { timeout: 10000 }
+    );
+
+    const states = response.data.states || [];
+
+    // Each state: [icao24, callsign, origin_country, time_position, last_contact,
+    //              longitude, latitude, baro_altitude, on_ground, velocity,
+    //              true_track, vertical_rate, sensors, geo_altitude, squawk, spi, position_source]
+    const flights = states
+      .map(s => ({
+        icao:      s[0],
+        callsign:  s[1]?.trim() || null,
+        lat:       s[6],
+        lng:       s[5],
+        altitude:  s[7],
+        velocity:  s[9],
+        heading:   s[10],
+        onGround:  s[8],
+        squawk:    s[14] || null,
+      }))
+      .filter(f => f.lat != null && f.lng != null);
+
+    flightCache = flights;
+    flightCacheTime = now;
+
+    console.log(`[API] GET /flights — returned ${flights.length} aircraft`);
+    res.json({ success: true, cached: false, data: flights });
+  } catch (err) {
+    console.error('[API] Error fetching flights:', err.message);
+    if (flightCache) {
+      return res.json({ success: true, cached: true, stale: true, data: flightCache });
+    }
+    res.status(500).json({ success: false, error: 'Failed to fetch flight data' });
   }
 });
 

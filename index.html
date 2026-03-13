@@ -213,10 +213,9 @@
     #map { position: absolute; top: 0; bottom: 0; left: 0; right: 0; }
 
     /* ── Map controls overlay ── */
-    #style-toggle {
+    #style-toggle, #flights-toggle {
       position: absolute;
       top: 10px;
-      right: 50px;
       z-index: 5;
       background: #0f172a;
       border: 1px solid #334155;
@@ -227,7 +226,10 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    #style-toggle:hover { background: #1e293b; }
+    #style-toggle   { right: 50px; }
+    #flights-toggle { right: 140px; }
+    #style-toggle:hover, #flights-toggle:hover { background: #1e293b; }
+    #flights-toggle.active { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
 
     /* ── Refresh bar ── */
     #refresh-bar {
@@ -350,6 +352,7 @@
   <!-- Map container -->
   <div style="position:relative; flex:1; overflow:hidden;">
     <div id="map"></div>
+    <button id="flights-toggle">✈ Flights</button>
     <button id="style-toggle">🛰 Satellite</button>
     <div id="refresh-bar" style="width:100%"></div>
   </div>
@@ -727,6 +730,128 @@
     document.getElementById('refresh-bar').style.width =
       ((secsLeft / REFRESH_SECS) * 100) + '%';
   }
+
+  // ── Flights layer ─────────────────────────────────────
+  const EMERGENCY_SQUAWKS = new Set(['7700', '7600', '7500']);
+  const MILITARY_PREFIXES = ['RCH', 'CNV', 'FORTE', 'NATO', 'JAKE', 'IAF', 'USAF', 'REACH', 'LAGR', 'AZAZ', 'HOMER', 'MAGMA', 'DUKE', 'SPAR'];
+
+  let flightsEnabled = false;
+  let flightInterval = null;
+  let flightPopup = null;
+
+  function flightColor(f) {
+    if (f.squawk && EMERGENCY_SQUAWKS.has(f.squawk)) return '#ef4444';
+    if (!f.callsign || !f.squawk) return '#f97316';
+    const cs = (f.callsign || '').toUpperCase();
+    if (MILITARY_PREFIXES.some(p => cs.startsWith(p))) return '#f8fafc';
+    return '#94a3b8';
+  }
+
+  function addFlightsLayer() {
+    if (map.getSource('flights')) return;
+
+    map.addSource('flights', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+
+    map.addLayer({
+      id: 'flights-layer',
+      type: 'symbol',
+      source: 'flights',
+      layout: {
+        'text-field': '✈',
+        'text-size': 18,
+        'text-rotate': ['get', 'heading'],
+        'text-rotation-alignment': 'map',
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': ['get', 'color'],
+        'text-halo-color': '#0f172a',
+        'text-halo-width': 1.5,
+      },
+    });
+
+    map.on('click', 'flights-layer', e => {
+      const f = e.features[0].properties;
+      const coords = e.features[0].geometry.coordinates.slice();
+      if (flightPopup) flightPopup.remove();
+      const altFt  = f.altitude ? Math.round(f.altitude * 3.28084).toLocaleString() + ' ft' : 'N/A';
+      const spdKt  = f.velocity ? Math.round(f.velocity * 1.944) + ' kt' : 'N/A';
+      const squawk = f.squawk || 'none';
+      const label  = EMERGENCY_SQUAWKS.has(f.squawk) ? '🔴 EMERGENCY' : (!f.callsign || !f.squawk) ? '🟠 NO TRANSPONDER' : '⬜ MILITARY';
+      flightPopup = new mapboxgl.Popup({ closeButton: true, maxWidth: '240px', offset: 12 })
+        .setLngLat(coords)
+        .setHTML(`
+          <div>
+            <div class="popup-badge" style="background:#1e293b;color:#93c5fd">${label}</div>
+            <div class="popup-title">${esc(f.callsign || f.icao || 'Unknown')}</div>
+            <div class="popup-meta">
+              <div>✈ <span>ICAO: ${esc(f.icao)}</span></div>
+              <div>⬆ <span>Alt: ${altFt}</span></div>
+              <div>💨 <span>Speed: ${spdKt}</span></div>
+              <div>📡 <span>Squawk: ${esc(squawk)}</span></div>
+            </div>
+          </div>
+        `)
+        .addTo(map);
+    });
+
+    map.on('mouseenter', 'flights-layer', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'flights-layer', () => { map.getCanvas().style.cursor = ''; });
+  }
+
+  function flightsToGeoJSON(flights) {
+    return {
+      type: 'FeatureCollection',
+      features: flights.map(f => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [f.lng, f.lat] },
+        properties: { ...f, color: flightColor(f) },
+      })),
+    };
+  }
+
+  async function fetchFlights() {
+    try {
+      const res = await fetch(`${API}/flights`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const src = map.getSource('flights');
+      if (src) src.setData(flightsToGeoJSON(json.data || []));
+      console.log(`[Flights] ${(json.data || []).length} aircraft`);
+    } catch (err) {
+      console.error('[Flights] fetch error:', err.message);
+    }
+  }
+
+  document.getElementById('flights-toggle').addEventListener('click', () => {
+    flightsEnabled = !flightsEnabled;
+    const btn = document.getElementById('flights-toggle');
+    btn.classList.toggle('active', flightsEnabled);
+    btn.textContent = flightsEnabled ? '✈ Flights ON' : '✈ Flights';
+
+    if (flightsEnabled) {
+      addFlightsLayer();
+      fetchFlights();
+      flightInterval = setInterval(fetchFlights, 30000);
+    } else {
+      clearInterval(flightInterval);
+      flightInterval = null;
+      if (flightPopup) { flightPopup.remove(); flightPopup = null; }
+      const src = map.getSource('flights');
+      if (src) src.setData({ type: 'FeatureCollection', features: [] });
+    }
+  });
+
+  // Re-add flights layer after style change if enabled
+  map.on('style.load', () => {
+    if (flightsEnabled) {
+      setTimeout(() => { addFlightsLayer(); fetchFlights(); }, 50);
+    }
+  });
 
   // ── Helpers ──────────────────────────────────────────
   function esc(str) {
