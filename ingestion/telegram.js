@@ -1,9 +1,10 @@
-const { TelegramClient } = require('telegram');
-const { StringSession } = require('telegram/sessions');
+const axios = require('axios');
+const cheerio = require('cheerio');
 const Incident = require('../models/Incident');
 const { LEBANON_KEYWORDS } = require('./pipeline');
 
-const CHANNELS = ['OJLebanese', 'AlJadeedNews', 'AlHadathTV', 'NaharnetEnglish', 'LBCINews'];
+// Public Telegram channel usernames — verified via https://t.me/s/<username>
+const CHANNELS = ['naharnet', 'LBCI', 'aljadeed', 'AlHadath', 'ojnews'];
 
 // Place-name keywords used for location extraction (subset of LEBANON_KEYWORDS)
 const PLACE_KEYWORDS = [
@@ -18,26 +19,37 @@ function extractLocation(text) {
   return PLACE_KEYWORDS.find((p) => lower.includes(p)) || null;
 }
 
-async function fetchChannel(client, username) {
+async function fetchChannel(username) {
+  const url = `https://t.me/s/${username}`;
   try {
-    const messages = await client.getMessages(username, { limit: 10 });
-    console.log(`[Telegram] Fetched ${messages.length} messages from @${username}`);
+    const { data } = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
+      timeout: 10000,
+    });
+    const $ = cheerio.load(data);
+    const messages = [];
+    $('.tgme_widget_message_wrap').each((_, el) => {
+      const text = $(el).find('.tgme_widget_message_text').text().trim();
+      const href = $(el).find('.tgme_widget_message_date').attr('href') || '';
+      const dateStr = $(el).find('.tgme_widget_message_date time').attr('datetime') || '';
+      if (text && href) {
+        messages.push({ text, url: href, date: dateStr ? new Date(dateStr) : new Date() });
+      }
+    });
+    console.log(`[Telegram] Scraped ${messages.length} messages from @${username}`);
     return messages;
   } catch (err) {
-    console.error(`[Telegram] Failed to fetch @${username}: ${err.message}`);
+    console.error(`[Telegram] Failed to scrape @${username}: ${err.message}`);
     return [];
   }
 }
 
-async function processMessage(msg, username) {
-  const text = msg.text || msg.message || '';
+async function processMessage({ text, url, date }, username) {
   if (!text.trim()) return;
 
   const lower = text.toLowerCase();
   const passes = LEBANON_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
   if (!passes) return;
-
-  const url = `https://t.me/${username}/${msg.id}`;
 
   const exists = await Incident.exists({ url });
   if (exists) return;
@@ -52,7 +64,7 @@ async function processMessage(msg, username) {
     source: `@${username}`,
     severity: 'medium',
     location: { name: locationName },
-    publishedAt: msg.date ? new Date(msg.date * 1000) : new Date(),
+    publishedAt: date,
   });
 
   try {
@@ -64,9 +76,9 @@ async function processMessage(msg, username) {
   }
 }
 
-async function poll(client) {
+async function poll() {
   for (const username of CHANNELS) {
-    const messages = await fetchChannel(client, username);
+    const messages = await fetchChannel(username);
     for (const msg of messages) {
       await processMessage(msg, username);
     }
@@ -74,42 +86,9 @@ async function poll(client) {
 }
 
 async function startTelegramIngestion() {
-  const apiId = parseInt(process.env.TELEGRAM_API_ID, 10);
-  const apiHash = process.env.TELEGRAM_API_HASH;
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-
-  if (!apiId || !apiHash || !botToken) {
-    console.warn('[Telegram] Missing credentials — ingestion disabled');
-    return;
-  }
-
-  const session = new StringSession(process.env.TELEGRAM_SESSION || '');
-  const client = new TelegramClient(session, apiId, apiHash, {
-    connectionRetries: 5,
-  });
-
-  try {
-    await client.start({ botAuthToken: botToken });
-    console.log('[Telegram] Client connected');
-
-    const dialogs = await client.getDialogs({});
-    for (const dialog of dialogs) {
-      console.log(`[Telegram] Dialog: "${dialog.title}" → @${dialog.entity.username || 'no-username'}`);
-    }
-
-    // Log session string on first connect so it can be saved to env
-    const sessionStr = client.session.save();
-    if (sessionStr && !process.env.TELEGRAM_SESSION) {
-      console.log(`[Telegram] Save this session string to TELEGRAM_SESSION env var: ${sessionStr}`);
-    }
-  } catch (err) {
-    console.error(`[Telegram] Failed to connect: ${err.message}`);
-    return;
-  }
-
-  // Initial poll then every 60 seconds
-  await poll(client);
-  setInterval(() => poll(client), 60 * 1000);
+  console.log('[Telegram] Starting web scrape ingestion (no auth required)');
+  await poll();
+  setInterval(poll, 60 * 1000);
 }
 
 module.exports = { startTelegramIngestion };
