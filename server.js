@@ -4,6 +4,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const axios = require('axios');
 const { startPipeline, runPipeline, getLastPipelineRun } = require('./ingestion/pipeline');
+const { startTelegramIngestion } = require('./ingestion/telegram');
 const Incident = require('./models/Incident');
 
 const app = express();
@@ -18,6 +19,9 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('MongoDB connected successfully');
     startPipeline();
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      startTelegramIngestion();
+    }
   })
   .catch((err) => console.error('MongoDB connection error:', err));
 

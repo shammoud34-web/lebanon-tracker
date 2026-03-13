@@ -230,4 +230,4 @@ function getLastPipelineRun() {
   return lastPipelineRun;
 }
 
-module.exports = { startPipeline, runPipeline, getLastPipelineRun };
+module.exports = { startPipeline, runPipeline, getLastPipelineRun, LEBANON_KEYWORDS };
