@@ -1,21 +1,11 @@
 console.log('[Telegram] Module loaded');
-const { TelegramClient, Api } = require('telegram');
-const { StringSession } = require('telegram/sessions');
+const axios = require('axios');
+const cheerio = require('cheerio');
 const Incident = require('../models/Incident');
 const { LEBANON_KEYWORDS } = require('./pipeline');
 
-const CHANNELS = [
-  '1001002338106',
-  '1001418480303',
-  '1001006840823',
-  '1001625429257',
-  '1001917130438',
-  '1001002129373',
-  '1001246447757',
-  '1002095217348',
-  '1002108651705',
-  '1001344300120',
-];
+// Public Telegram channel usernames — verified via https://t.me/s/<username>
+const CHANNELS = ['naharnet', 'AlHadath', 'lbci', 'aljadeed', 'mtvlebanon'];
 
 // Place-name keywords used for location extraction (subset of LEBANON_KEYWORDS)
 const PLACE_KEYWORDS = [
@@ -30,26 +20,37 @@ function extractLocation(text) {
   return PLACE_KEYWORDS.find((p) => lower.includes(p)) || null;
 }
 
-async function fetchChannel(client, id) {
+async function fetchChannel(username) {
+  const url = `https://t.me/s/${username}`;
   try {
-    const messages = await client.getMessages('-100' + id, { limit: 10 });
-    console.log(`[Telegram] Fetched ${messages.length} messages from channel ${id}`);
+    const { data } = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
+      timeout: 10000,
+    });
+    const $ = cheerio.load(data);
+    const messages = [];
+    $('.tgme_widget_message_wrap').each((_, el) => {
+      const text = $(el).find('.tgme_widget_message_text').text().trim();
+      const href = $(el).find('.tgme_widget_message_date').attr('href') || '';
+      const dateStr = $(el).find('.tgme_widget_message_date time').attr('datetime') || '';
+      if (text && href) {
+        messages.push({ text, url: href, date: dateStr ? new Date(dateStr) : new Date() });
+      }
+    });
+    console.log(`[Telegram] Scraped ${messages.length} messages from @${username}`);
     return messages;
   } catch (err) {
-    console.error(`[Telegram] Failed to fetch channel ${id}: ${err.message}`);
+    console.error(`[Telegram] Failed to scrape @${username}: ${err.message}`);
     return [];
   }
 }
 
-async function processMessage(msg, id) {
-  const text = msg.text || msg.message || '';
+async function processMessage({ text, url, date }, username) {
   if (!text.trim()) return;
 
   const lower = text.toLowerCase();
   const passes = LEBANON_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
   if (!passes) return;
-
-  const url = `https://t.me/c/${id}/${msg.id}`;
 
   const exists = await Incident.exists({ url });
   if (exists) return;
@@ -61,86 +62,34 @@ async function processMessage(msg, id) {
     title,
     summary: text,
     url,
-    source: `tg:${id}`,
+    source: `@${username}`,
     severity: 'medium',
     location: { name: locationName },
-    publishedAt: msg.date ? new Date(msg.date * 1000) : new Date(),
+    publishedAt: date,
   });
 
   try {
     await incident.save();
-    console.log(`[Telegram] Saved from channel ${id}: "${title.slice(0, 60)}..."`);
+    console.log(`[Telegram] Saved: "${title.slice(0, 60)}..."`);
   } catch (err) {
     if (err.code === 11000) return; // duplicate
-    console.error(`[Telegram] DB error saving from channel ${id}: ${err.message}`);
+    console.error(`[Telegram] DB error saving from @${username}: ${err.message}`);
   }
 }
 
-async function poll(client) {
-  for (const id of CHANNELS) {
-    const messages = await fetchChannel(client, id);
+async function poll() {
+  for (const username of CHANNELS) {
+    const messages = await fetchChannel(username);
     for (const msg of messages) {
-      await processMessage(msg, id);
+      await processMessage(msg, username);
     }
   }
 }
 
 async function startTelegramIngestion() {
-  try {
-    const apiId = parseInt(process.env.TELEGRAM_API_ID, 10);
-    const apiHash = process.env.TELEGRAM_API_HASH;
-
-    if (!apiId || !apiHash || !process.env.TELEGRAM_SESSION) {
-      console.warn('[Telegram] Missing credentials — ingestion disabled');
-      return;
-    }
-
-    const session = new StringSession(process.env.TELEGRAM_SESSION);
-    const client = new TelegramClient(session, apiId, apiHash, {
-      connectionRetries: 5,
-    });
-
-    try {
-      await client.connect();
-      console.log('[Telegram] Client connected');
-
-      if (!await client.isUserAuthorized()) {
-        console.log('[Telegram] Not authorized — TELEGRAM_SESSION may be invalid');
-        return;
-      }
-
-      console.log('[Telegram] User authorized');
-
-      // Populate entity cache using raw API invoke
-      console.log('[Telegram] Starting dialog cache...');
-      const result = await client.invoke(
-        new Api.messages.GetDialogs({
-          offsetDate: 0,
-          offsetId: 0,
-          offsetPeer: new Api.InputPeerEmpty(),
-          limit: 100,
-          hash: BigInt(0),
-        })
-      );
-
-      if (result && result.dialogs) {
-        for (const dialog of result.dialogs) {
-          const peer = dialog.peer;
-          console.log(`[Telegram] Dialog peer:`, JSON.stringify(peer));
-        }
-      }
-      console.log('[Telegram] Dialog cache complete, starting polling');
-    } catch (err) {
-      console.error(`[Telegram] Failed to connect: ${err.message}`);
-      return;
-    }
-
-    // Initial poll then every 60 seconds
-    await poll(client);
-    setInterval(() => poll(client), 60 * 1000);
-  } catch (err) {
-    console.error('[Telegram] Unhandled startup error:', err);
-  }
+  console.log('[Telegram] Starting web scrape ingestion (no auth required)');
+  await poll();
+  setInterval(poll, 60 * 1000);
 }
 
 module.exports = { startTelegramIngestion };
