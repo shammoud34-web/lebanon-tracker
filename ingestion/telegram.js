@@ -1,5 +1,5 @@
 console.log('[Telegram] Module loaded');
-const { TelegramClient } = require('telegram');
+const { TelegramClient, Api } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const Incident = require('../models/Incident');
 const { LEBANON_KEYWORDS } = require('./pipeline');
@@ -111,13 +111,23 @@ async function startTelegramIngestion() {
 
       console.log('[Telegram] User authorized');
 
-      // Populate entity cache so numeric channel IDs can be resolved
+      // Populate entity cache using raw API invoke
       console.log('[Telegram] Starting dialog cache...');
-      const dialogs = await client.getDialogs({});
-      for (const dialog of dialogs) {
-        const title = dialog.title || dialog.name || '(no title)';
-        const username = dialog.entity?.username ? `@${dialog.entity.username}` : '(no username)';
-        console.log(`[Telegram] Dialog: "${title}" → ${username}`);
+      const result = await client.invoke(
+        new Api.messages.GetDialogs({
+          offsetDate: 0,
+          offsetId: 0,
+          offsetPeer: new Api.InputPeerEmpty(),
+          limit: 100,
+          hash: BigInt(0),
+        })
+      );
+
+      if (result && result.dialogs) {
+        for (const dialog of result.dialogs) {
+          const peer = dialog.peer;
+          console.log(`[Telegram] Dialog peer:`, JSON.stringify(peer));
+        }
       }
       console.log('[Telegram] Dialog cache complete, starting polling');
     } catch (err) {
