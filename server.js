@@ -106,7 +106,7 @@ app.get('/flights', async (req, res) => {
 
   try {
     const r = await axios.get(
-      'https://api.adsb.fi/v1/aircraft?lat=33.85&lon=35.86&radius=150',
+      'https://opendata.adsb.fi/api/v2/lat/33.85/lon/35.86/dist/150',
       { timeout: 10000, headers: { 'User-Agent': 'lebanon-tracker/1.0' } }
     );
     console.log(`[Flights] adsb.fi responded: HTTP ${r.status}, ac=${(r.data.ac || []).length}, keys=${Object.keys(r.data).join(',')}`);

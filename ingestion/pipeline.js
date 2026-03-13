@@ -10,7 +10,7 @@ const RSS_FEEDS = [
   { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
   { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
   { url: 'https://www.middleeasteye.net/rss', source: 'mee' },
-  { url: 'https://feeds.apnews.com/rss/apf-middleeast', source: 'ap' },
+  { url: 'https://apnews.com/hub/middle-east.rss', source: 'ap' },
 ];
 
 const LEBANON_KEYWORDS = [
