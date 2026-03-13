@@ -31,7 +31,7 @@ function extractLocation(text) {
 
 async function fetchChannel(client, id) {
   try {
-    const messages = await client.getMessages(BigInt(id), { limit: 10 });
+    const messages = await client.getMessages('-100' + id, { limit: 10 });
     console.log(`[Telegram] Fetched ${messages.length} messages from channel ${id}`);
     return messages;
   } catch (err) {
@@ -107,6 +107,10 @@ async function startTelegramIngestion() {
     if (sessionStr && !process.env.TELEGRAM_SESSION) {
       console.log(`[Telegram] Save this session string to TELEGRAM_SESSION env var: ${sessionStr}`);
     }
+
+    // Populate entity cache so numeric channel IDs can be resolved
+    await client.getDialogs({});
+    console.log('[Telegram] Entity cache populated');
   } catch (err) {
     console.error(`[Telegram] Failed to connect: ${err.message}`);
     return;
