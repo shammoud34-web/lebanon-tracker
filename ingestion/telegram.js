@@ -5,7 +5,7 @@ const Incident = require('../models/Incident');
 const { LEBANON_KEYWORDS } = require('./pipeline');
 
 // Public Telegram channel usernames — verified via https://t.me/s/<username>
-const CHANNELS = ['naharnet', 'AlHadath', 'AlMayadeen', 'alarabiya', 'MenchOsint', 'warmonitors', 'bintjbeilnews', 'MonitorX99', 'LBCI_NEWS', 'alakhbar_news', 'mayadeenchannel'];
+const CHANNELS = ['naharnet', 'AlHadath', 'AlMayadeen', 'alarabiya', 'MenchOsint', 'warmonitors', 'bintjbeilnews', 'MonitorX99', 'LBCI_NEWS', 'alakhbar_news', 'mayadeenchannel', 'lebarmy', 'libanews', 'IntelSlava'];
 
 // Place-name keywords used for location extraction (subset of LEBANON_KEYWORDS)
 const PLACE_KEYWORDS = [
@@ -15,9 +15,42 @@ const PLACE_KEYWORDS = [
   'dahieh', 'haret hreik', 'ghobeiry', 'baabda', 'bint jbeil', 'khiyam', 'aita',
 ];
 
+const LOCATION_COORDS = {
+  'beirut':        { lat: 33.8938, lng: 35.5018 },
+  'tripoli':       { lat: 34.4367, lng: 35.8497 },
+  'sidon':         { lat: 33.5632, lng: 35.3712 },
+  'tyre':          { lat: 33.2705, lng: 35.2038 },
+  'baalbek':       { lat: 34.0042, lng: 36.2181 },
+  'nabatieh':      { lat: 33.3779, lng: 35.4836 },
+  'zahle':         { lat: 33.8500, lng: 35.9014 },
+  'jounieh':       { lat: 33.9808, lng: 35.6178 },
+  'chouf':         { lat: 33.6500, lng: 35.5833 },
+  'akkar':         { lat: 34.5333, lng: 36.1000 },
+  'marjayoun':     { lat: 33.3614, lng: 35.5922 },
+  'hasbaya':       { lat: 33.3986, lng: 35.6847 },
+  'rashaya':       { lat: 33.5033, lng: 35.8408 },
+  'qana':          { lat: 33.2039, lng: 35.2969 },
+  'naqoura':       { lat: 33.1167, lng: 35.1333 },
+  'hermel':        { lat: 34.3931, lng: 36.3864 },
+  'bekaa':         { lat: 33.8463, lng: 35.9014 },
+  'dahiyeh':       { lat: 33.8547, lng: 35.4900 },
+  'dahieh':        { lat: 33.8547, lng: 35.4900 },
+  'bint jbeil':    { lat: 33.1194, lng: 35.4317 },
+  'south lebanon': { lat: 33.2705, lng: 35.2038 },
+  'lebanon':       { lat: 33.8547, lng: 35.8623 },
+};
+
 function extractLocation(text) {
   const lower = text.toLowerCase();
   return PLACE_KEYWORDS.find((p) => lower.includes(p)) || null;
+}
+
+function detectSeverity(text) {
+  const lower = text.toLowerCase();
+  if (['killed', 'dead', 'massacre', 'destroyed', 'bombed', 'airstrike', 'missile', 'explosion'].some((w) => lower.includes(w))) return 'critical';
+  if (['wounded', 'injured', 'strike', 'attack', 'shelling', 'fire', 'clashes', 'troops'].some((w) => lower.includes(w))) return 'high';
+  if (['displaced', 'evacuated', 'warning', 'threat', 'military'].some((w) => lower.includes(w))) return 'medium';
+  return 'low';
 }
 
 async function fetchChannel(username) {
@@ -57,20 +90,22 @@ async function processMessage({ text, url, date }, username) {
 
   const title = text.slice(0, 100).replace(/\n/g, ' ');
   const locationName = extractLocation(text) || 'Lebanon';
+  const coords = LOCATION_COORDS[locationName] || LOCATION_COORDS['lebanon'];
+  const severity = detectSeverity(text);
 
   const incident = new Incident({
     title,
     summary: text,
     url,
     source: `@${username}`,
-    severity: 'medium',
-    location: { name: locationName },
+    severity,
+    location: { name: locationName, lat: coords.lat, lng: coords.lng },
     publishedAt: date,
   });
 
   try {
     await incident.save();
-    console.log(`[Telegram] Saved: "${title.slice(0, 60)}..."`);
+    console.log(`[Telegram] Saved (${severity}): "${title.slice(0, 60)}..."`);
   } catch (err) {
     if (err.code === 11000) return; // duplicate
     console.error(`[Telegram] DB error saving from @${username}: ${err.message}`);
