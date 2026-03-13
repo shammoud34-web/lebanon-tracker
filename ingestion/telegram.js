@@ -92,6 +92,11 @@ async function startTelegramIngestion() {
     await client.start({ botAuthToken: botToken });
     console.log('[Telegram] Client connected');
 
+    const dialogs = await client.getDialogs({});
+    for (const dialog of dialogs) {
+      console.log(`[Telegram] Dialog: "${dialog.title}" → @${dialog.entity.username || 'no-username'}`);
+    }
+
     // Log session string on first connect so it can be saved to env
     const sessionStr = client.session.save();
     if (sessionStr && !process.env.TELEGRAM_SESSION) {
@@ -100,19 +105,6 @@ async function startTelegramIngestion() {
   } catch (err) {
     console.error(`[Telegram] Failed to connect: ${err.message}`);
     return;
-  }
-
-  // Debug: list all joined dialogs so we can verify correct channel usernames
-  try {
-    const dialogs = await client.getDialogs({});
-    console.log(`[Telegram] Found ${dialogs.length} dialogs:`);
-    for (const dialog of dialogs) {
-      const title = dialog.title || dialog.name || '(no title)';
-      const username = dialog.entity?.username ? `@${dialog.entity.username}` : '(no username)';
-      console.log(`[Telegram] Dialog: "${title}" → ${username}`);
-    }
-  } catch (err) {
-    console.error(`[Telegram] Failed to list dialogs: ${err.message}`);
   }
 
   // Initial poll then every 60 seconds
