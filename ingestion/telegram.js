@@ -89,16 +89,15 @@ async function processMessage({ text, url, date }, username) {
   if (exists) return;
 
   const title = text.slice(0, 100).replace(/\n/g, ' ');
-  const locationName = extractLocation(text) || 'Lebanon';
-  const coords = LOCATION_COORDS[locationName] || LOCATION_COORDS['lebanon'];
-  const severity = detectSeverity(text);
+  const locationName = extractLocation(text) || 'lebanon';
+  const coords = LOCATION_COORDS[locationName.toLowerCase()] || LOCATION_COORDS['lebanon'];
 
   const incident = new Incident({
     title,
     summary: text,
     url,
     source: `@${username}`,
-    severity,
+    severity: detectSeverity(text),
     location: { name: locationName, lat: coords.lat, lng: coords.lng },
     publishedAt: date,
   });
@@ -123,6 +122,18 @@ async function poll() {
 
 async function startTelegramIngestion() {
   console.log('[Telegram] Starting web scrape ingestion (no auth required)');
+
+  // Backfill existing Telegram incidents that have no coordinates
+  try {
+    const result = await Incident.updateMany(
+      { source: { $regex: '^@' }, 'location.lat': null },
+      { $set: { 'location.lat': 33.8547, 'location.lng': 35.8623 } }
+    );
+    console.log(`[Telegram] Backfilled coordinates for ${result.modifiedCount} existing incidents`);
+  } catch (err) {
+    console.error('[Telegram] Backfill failed:', err.message);
+  }
+
   await poll();
   setInterval(poll, 60 * 1000);
 }
