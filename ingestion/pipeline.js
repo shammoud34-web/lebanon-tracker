@@ -9,15 +9,15 @@ const rssParser = new RSSParser();
 const RSS_FEEDS = [
   { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
   { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
-  { url: 'https://www.middleeasteye.net/rss', source: 'mee' },
-  { url: 'https://apnews.com/hub/middle-east.rss', source: 'ap' },
+  { url: 'https://naharnet.com/rss', source: 'naharnet' },
+  { url: 'https://apnews.com/world-news.rss', source: 'ap' },
 ];
 
 const LEBANON_KEYWORDS = [
-  'lebanon', 'beirut', 'dahiyeh', 'hezbollah', 'nabatieh', 'bekaa',
+  'lebanon', 'lebanese', 'beirut', 'dahiyeh', 'hezbollah', 'nabatieh', 'bekaa',
   'south lebanon', 'sidon', 'tyre', 'baalbek', 'haret hreik', 'dahieh',
   'aita', 'khiyam', 'bint jbeil', 'tripoli', 'zahlé', 'zahle', 'baabda',
-  'ghobeiry', 'hermel', 'zahle', 'jounieh', 'chouf', 'akkar', 'marjayoun',
+  'ghobeiry', 'hermel', 'jounieh', 'chouf', 'akkar', 'marjayoun',
   'hasbaya', 'rashaya', 'qana', 'naqoura', 'qlayaat',
 ];
 
@@ -30,7 +30,7 @@ Respond in JSON only, no other text.`;
 
 function passesKeywordFilter(title, content) {
   const text = `${title} ${content}`.toLowerCase();
-  return LEBANON_KEYWORDS.some((kw) => text.includes(kw));
+  return LEBANON_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
 }
 
 async function classifyArticle(title, content) {
@@ -196,7 +196,7 @@ async function processFeed({ url, source }) {
 
   for (const item of feed.items) {
     const articleUrl = item.link || item.guid;
-    const content = item.contentSnippet || item.content || item.summary || '';
+    const content = item.contentSnippet || item.content || item.summary || item.description || '';
     await processArticle({
       title: item.title,
       url: articleUrl,
