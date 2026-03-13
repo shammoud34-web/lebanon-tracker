@@ -1,3 +1,4 @@
+console.log('[Telegram] Module loaded');
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
 const Incident = require('../models/Incident');
@@ -85,46 +86,50 @@ async function poll(client) {
 }
 
 async function startTelegramIngestion() {
-  const apiId = parseInt(process.env.TELEGRAM_API_ID, 10);
-  const apiHash = process.env.TELEGRAM_API_HASH;
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-
-  if (!apiId || !apiHash || !botToken) {
-    console.warn('[Telegram] Missing credentials — ingestion disabled');
-    return;
-  }
-
-  const session = new StringSession(process.env.TELEGRAM_SESSION || '');
-  const client = new TelegramClient(session, apiId, apiHash, {
-    connectionRetries: 5,
-  });
-
   try {
-    await client.start({ botAuthToken: botToken });
-    console.log('[Telegram] Client connected');
+    const apiId = parseInt(process.env.TELEGRAM_API_ID, 10);
+    const apiHash = process.env.TELEGRAM_API_HASH;
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
-    const sessionStr = client.session.save();
-    if (sessionStr && !process.env.TELEGRAM_SESSION) {
-      console.log(`[Telegram] Save this session string to TELEGRAM_SESSION env var: ${sessionStr}`);
+    if (!apiId || !apiHash || !botToken) {
+      console.warn('[Telegram] Missing credentials — ingestion disabled');
+      return;
     }
 
-    // Populate entity cache so numeric channel IDs can be resolved
-    console.log('[Telegram] Starting dialog cache...');
-    const dialogs = await client.getDialogs({});
-    for (const dialog of dialogs) {
-      const title = dialog.title || dialog.name || '(no title)';
-      const username = dialog.entity?.username ? `@${dialog.entity.username}` : '(no username)';
-      console.log(`[Telegram] Dialog: "${title}" → ${username}`);
+    const session = new StringSession(process.env.TELEGRAM_SESSION || '');
+    const client = new TelegramClient(session, apiId, apiHash, {
+      connectionRetries: 5,
+    });
+
+    try {
+      await client.start({ botAuthToken: botToken });
+      console.log('[Telegram] Client connected');
+
+      const sessionStr = client.session.save();
+      if (sessionStr && !process.env.TELEGRAM_SESSION) {
+        console.log(`[Telegram] Save this session string to TELEGRAM_SESSION env var: ${sessionStr}`);
+      }
+
+      // Populate entity cache so numeric channel IDs can be resolved
+      console.log('[Telegram] Starting dialog cache...');
+      const dialogs = await client.getDialogs({});
+      for (const dialog of dialogs) {
+        const title = dialog.title || dialog.name || '(no title)';
+        const username = dialog.entity?.username ? `@${dialog.entity.username}` : '(no username)';
+        console.log(`[Telegram] Dialog: "${title}" → ${username}`);
+      }
+      console.log('[Telegram] Dialog cache complete, starting polling');
+    } catch (err) {
+      console.error(`[Telegram] Failed to connect: ${err.message}`);
+      return;
     }
-    console.log('[Telegram] Dialog cache complete, starting polling');
+
+    // Initial poll then every 60 seconds
+    await poll(client);
+    setInterval(() => poll(client), 60 * 1000);
   } catch (err) {
-    console.error(`[Telegram] Failed to connect: ${err.message}`);
-    return;
+    console.error('[Telegram] Unhandled startup error:', err);
   }
-
-  // Initial poll then every 60 seconds
-  await poll(client);
-  setInterval(() => poll(client), 60 * 1000);
 }
 
 module.exports = { startTelegramIngestion };

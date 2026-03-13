@@ -20,7 +20,11 @@ mongoose.connect(process.env.MONGODB_URI)
     console.log('MongoDB connected successfully');
     startPipeline();
     if (process.env.TELEGRAM_BOT_TOKEN) {
-      startTelegramIngestion();
+      try {
+        startTelegramIngestion();
+      } catch (err) {
+        console.error('[Telegram] Failed to start:', err);
+      }
     }
   })
   .catch((err) => console.error('MongoDB connection error:', err));
