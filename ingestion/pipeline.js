@@ -11,7 +11,7 @@ const rssParser = new RSSParser({
 const RSS_FEEDS = [
   { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
   { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
-  { url: 'https://www.elnashra.com/rss', source: 'elnashra' },
+  { url: 'https://www.972mag.com/feed/', source: '972mag' },
   { url: 'https://rss.nytimes.com/services/xml/rss/nyt/MiddleEast.xml', source: 'nytimes' },
 ];
 
@@ -37,9 +37,19 @@ Classify as a security incident if the article involves ANY of: airstrikes, shel
 Only return null if the article is entirely unrelated to security, conflict, or military activity in Lebanon (e.g. sports, culture, business, weather).
 Respond in JSON only, no other text.`;
 
-function passesKeywordFilter(title, content) {
-  const text = `${title} ${content}`.toLowerCase();
+const HIGH_SIGNAL_WORDS = [
+  'strike', 'attack', 'killed', 'wounded', 'airstrike', 'missile', 'rocket',
+  'explosion', 'shelling', 'displaced', 'invasion', 'troops', 'military', 'bombing',
+];
+
+function passesKeywordFilter(title, content, url) {
+  const text = `${title} ${content} ${url || ''}`.toLowerCase();
   return LEBANON_KEYWORDS.some((kw) => text.includes(kw.toLowerCase()));
+}
+
+function hasHighSignalWord(title) {
+  const lower = title.toLowerCase();
+  return HIGH_SIGNAL_WORDS.some((w) => lower.includes(w));
 }
 
 async function classifyArticle(title, content) {
@@ -145,12 +155,28 @@ async function processArticle({ title, url, content, pubDate, source }) {
     return;
   }
 
-  if (!passesKeywordFilter(title, content)) {
+  if (!passesKeywordFilter(title, content, url)) {
     console.log(`[Filter] No Lebanon keyword, skipping: "${title}"`);
     return;
   }
 
   console.log(`[Filter] Passed keyword filter: "${title}"`);
+
+  // Skip Groq for articles without high-signal conflict words to save API calls
+  if (!hasHighSignalWord(title)) {
+    console.log(`[Filter] No high-signal word, saving directly without Groq: "${title}"`);
+    await saveIncident({
+      title,
+      summary: title,
+      url,
+      source,
+      severity: 'low',
+      locationName: 'Lebanon',
+      coords: null,
+      pubDate,
+    });
+    return;
+  }
 
   let classification;
   try {

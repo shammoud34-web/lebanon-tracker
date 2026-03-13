@@ -109,8 +109,14 @@ async function startTelegramIngestion() {
     }
 
     // Populate entity cache so numeric channel IDs can be resolved
-    await client.getDialogs({});
-    console.log('[Telegram] Entity cache populated');
+    console.log('[Telegram] Starting dialog cache...');
+    const dialogs = await client.getDialogs({});
+    for (const dialog of dialogs) {
+      const title = dialog.title || dialog.name || '(no title)';
+      const username = dialog.entity?.username ? `@${dialog.entity.username}` : '(no username)';
+      console.log(`[Telegram] Dialog: "${title}" → ${username}`);
+    }
+    console.log('[Telegram] Dialog cache complete, starting polling');
   } catch (err) {
     console.error(`[Telegram] Failed to connect: ${err.message}`);
     return;
