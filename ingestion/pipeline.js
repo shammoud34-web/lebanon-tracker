@@ -11,7 +11,7 @@ const rssParser = new RSSParser({
 const RSS_FEEDS = [
   { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
   { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
-  { url: 'https://www.lbcgroup.tv/rss/en', source: 'lbc' },
+  { url: 'https://www.elnashra.com/rss', source: 'elnashra' },
   { url: 'https://rss.nytimes.com/services/xml/rss/nyt/MiddleEast.xml', source: 'nytimes' },
 ];
 
@@ -23,11 +23,18 @@ const LEBANON_KEYWORDS = [
   'hasbaya', 'rashaya', 'qana', 'naqoura', 'qlayaat',
 ];
 
-const CLASSIFY_PROMPT = `You are an incident classifier for Lebanon. Given this news article, extract:
-- locationName: the most specific location mentioned in Lebanon (neighbourhood, town or city)
-- severity: one of critical / high / medium / low. Critical = confirmed deaths or mass displacement. High = active strikes or explosions. Medium = evacuation orders or warnings. Low = general reports.
-- summary: one sentence description of the incident
-If the article is not about a security incident in Lebanon, return null.
+const CLASSIFY_PROMPT = `You are an incident classifier for Lebanon. Given a news article, extract:
+- locationName: the most specific location in Lebanon mentioned (neighbourhood, town, city, or region). If no specific place, use "Lebanon".
+- severity: one of critical / high / medium / low.
+  critical = confirmed deaths, mass casualties, or mass displacement.
+  high = active airstrikes, explosions, armed clashes, or military operations.
+  medium = evacuation orders, warnings, troop movements, infrastructure damage, or armed group activity.
+  low = general conflict reports, political/military statements, or background context.
+- summary: one sentence describing what happened.
+
+Classify as a security incident if the article involves ANY of: airstrikes, shelling, explosions, military operations, armed clashes, casualties, displacement, kidnappings, arrests of militants, infrastructure damage, armed group activity, ceasefire violations, or ongoing conflict developments — even if it is a news overview rather than a single specific event.
+
+Only return null if the article is entirely unrelated to security, conflict, or military activity in Lebanon (e.g. sports, culture, business, weather).
 Respond in JSON only, no other text.`;
 
 function passesKeywordFilter(title, content) {
