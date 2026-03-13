@@ -4,13 +4,15 @@ const Groq = require('groq-sdk');
 const axios = require('axios');
 const Incident = require('../models/Incident');
 
-const rssParser = new RSSParser();
+const rssParser = new RSSParser({
+  headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NewsBot/1.0)' },
+});
 
 const RSS_FEEDS = [
   { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
   { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
-  { url: 'https://www.france24.com/en/middle-east/rss', source: 'france24' },
-  { url: 'https://rss.dw.com/rdf/rss-en-middle-east', source: 'dw' },
+  { url: 'https://www.lbcgroup.tv/rss/en', source: 'lbc' },
+  { url: 'https://rss.nytimes.com/services/xml/rss/nyt/MiddleEast.xml', source: 'nytimes' },
 ];
 
 const LEBANON_KEYWORDS = [
