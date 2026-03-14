@@ -6,6 +6,7 @@
   <title>Lebanon Incident Tracker</title>
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.5.0/mapbox-gl.css" rel="stylesheet">
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.5.0/mapbox-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -228,8 +229,74 @@
     }
     #style-toggle   { right: 50px; }
     #flights-toggle { right: 140px; }
-    #style-toggle:hover, #flights-toggle:hover { background: #1e293b; }
-    #flights-toggle.active { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    #style-toggle:hover, #flights-toggle:hover, #history-toggle:hover { background: #1e293b; }
+    #flights-toggle.active  { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
+    #history-toggle { right: 240px; }
+    #history-toggle.active  { background: #1a2e1a; border-color: #22c55e; color: #86efac; }
+
+    /* ── Chart panel ── */
+    #chart-panel {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 240px;
+      background: rgba(15,23,42,0.96);
+      border-top: 1px solid #1e293b;
+      z-index: 8;
+      display: none;
+      flex-direction: column;
+      padding: 10px 16px 8px;
+      backdrop-filter: blur(4px);
+    }
+    #chart-panel.visible { display: flex; }
+    #chart-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+    #chart-panel-header h3 {
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    #chart-type-btns { display: flex; gap: 6px; }
+    .chart-type-btn {
+      padding: 3px 9px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      background: transparent;
+      color: #64748b;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .chart-type-btn.active { background: #1e293b; color: #e2e8f0; border-color: #475569; }
+    #chart-close {
+      background: none; border: none; color: #475569;
+      font-size: 16px; cursor: pointer; padding: 0 4px;
+    }
+    #chart-close:hover { color: #e2e8f0; }
+    #chart-canvas-wrap { flex: 1; min-height: 0; position: relative; }
+
+    /* ── ACLED legend ── */
+    #acled-legend {
+      position: absolute;
+      bottom: 14px; left: 14px;
+      z-index: 9;
+      background: rgba(15,23,42,0.9);
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+    }
+    #acled-legend.visible { display: flex; }
+    .legend-row { display: flex; align-items: center; gap: 6px; color: #94a3b8; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
     /* ── Refresh bar ── */
     #refresh-bar {
@@ -314,6 +381,9 @@
       .filters { flex-wrap: wrap; }
 
       .mapboxgl-popup-content { max-width: calc(100vw - 40px) !important; }
+      #history-toggle { right: 190px; }
+      #chart-panel { height: 200px; }
+      #acled-legend { bottom: 210px; }
     }
   </style>
 </head>
@@ -352,9 +422,37 @@
   <!-- Map container -->
   <div style="position:relative; flex:1; overflow:hidden;">
     <div id="map"></div>
+    <button id="history-toggle">📊 History</button>
     <button id="flights-toggle">✈ Flights</button>
     <button id="style-toggle">🛰 Satellite</button>
     <div id="refresh-bar" style="width:100%"></div>
+
+    <!-- ACLED legend -->
+    <div id="acled-legend">
+      <div class="legend-row"><div class="legend-dot" style="background:#ef4444"></div>Battles</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#f97316"></div>Explosions</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#eab308"></div>Violence vs Civilians</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#3b82f6"></div>Protests</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#a855f7"></div>Riots</div>
+      <div class="legend-row"><div class="legend-dot" style="background:#94a3b8"></div>Other</div>
+    </div>
+
+    <!-- Chart panel -->
+    <div id="chart-panel">
+      <div id="chart-panel-header">
+        <h3>Lebanon Historical Events &amp; Fatalities</h3>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div id="chart-type-btns">
+            <button class="chart-type-btn active" data-type="political_violence">Political Violence</button>
+            <button class="chart-type-btn" data-type="civilian_targeting">Civilian Targeting</button>
+          </div>
+          <button id="chart-close">×</button>
+        </div>
+      </div>
+      <div id="chart-canvas-wrap">
+        <canvas id="chart-canvas"></canvas>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -852,6 +950,222 @@
       setTimeout(() => { addFlightsLayer(); fetchFlights(); }, 50);
     }
   });
+
+  // ── ACLED historical events layer ────────────────────
+  const ACLED_COLORS = {
+    'Battles':                    '#ef4444',
+    'Explosions/Remote violence': '#f97316',
+    'Violence against civilians': '#eab308',
+    'Protests':                   '#3b82f6',
+    'Riots':                      '#a855f7',
+  };
+  function acledColor(eventType) {
+    return ACLED_COLORS[eventType] || '#94a3b8';
+  }
+
+  let historyEnabled = false;
+  let acledMonthlyData = null;
+  let activeChartType = 'political_violence';
+  let chart = null;
+
+  async function fetchAcledEvents() {
+    try {
+      const res = await fetch(`${API}/acled/events`);
+      const json = await res.json();
+      const src = map.getSource('acled-events');
+      if (src) {
+        src.setData({
+          type: 'FeatureCollection',
+          features: (json.data || []).map(e => ({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [e.lng, e.lat] },
+            properties: {
+              eventType: e.eventType,
+              subEventType: e.subEventType,
+              admin1: e.admin1,
+              events: e.events,
+              fatalities: e.fatalities,
+              weekDate: e.weekDate,
+              color: acledColor(e.eventType),
+            },
+          })),
+        });
+      }
+    } catch (err) {
+      console.error('[ACLED] fetch error:', err.message);
+    }
+  }
+
+  function addAcledLayer() {
+    if (map.getSource('acled-events')) return;
+    map.addSource('acled-events', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    map.addLayer({
+      id: 'acled-events-layer',
+      type: 'circle',
+      source: 'acled-events',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['get', 'events'], 1, 4, 10, 8, 50, 14],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.6,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#0f172a',
+      },
+    }, 'unclustered-point'); // insert below live incidents
+
+    map.on('click', 'acled-events-layer', e => {
+      const p = e.features[0].properties;
+      const coords = e.features[0].geometry.coordinates.slice();
+      if (activePopup) activePopup.remove();
+      const date = new Date(p.weekDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      activePopup = new mapboxgl.Popup({ closeButton: true, maxWidth: '240px', offset: 10 })
+        .setLngLat(coords)
+        .setHTML(`
+          <div>
+            <div class="popup-badge" style="background:#1e293b;color:${acledColor(p.eventType)}">${esc(p.eventType)}</div>
+            <div class="popup-title">${esc(p.subEventType || p.eventType)}</div>
+            <div class="popup-meta">
+              <div>📍 <span>${esc(p.admin1)}</span></div>
+              <div>📅 <span>${date}</span></div>
+              <div>⚡ <span>${p.events} event${p.events !== 1 ? 's' : ''}, ${p.fatalities} fatal${p.fatalities !== 1 ? 'ities' : 'ity'}</span></div>
+            </div>
+          </div>
+        `)
+        .addTo(map);
+      activePopup.on('close', () => { activePopup = null; });
+    });
+    map.on('mouseenter', 'acled-events-layer', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'acled-events-layer', () => { map.getCanvas().style.cursor = ''; });
+  }
+
+  document.getElementById('history-toggle').addEventListener('click', async () => {
+    historyEnabled = !historyEnabled;
+    const btn = document.getElementById('history-toggle');
+    btn.classList.toggle('active', historyEnabled);
+    btn.textContent = historyEnabled ? '📊 History ON' : '📊 History';
+    document.getElementById('acled-legend').classList.toggle('visible', historyEnabled);
+    document.getElementById('chart-panel').classList.toggle('visible', historyEnabled);
+
+    if (historyEnabled) {
+      addAcledLayer();
+      fetchAcledEvents();
+      if (!acledMonthlyData) {
+        const res = await fetch(`${API}/acled/monthly`);
+        const json = await res.json();
+        acledMonthlyData = json.data || [];
+      }
+      renderChart(activeChartType);
+      setTimeout(() => map.resize(), 50);
+    } else {
+      const src = map.getSource('acled-events');
+      if (src) src.setData({ type: 'FeatureCollection', features: [] });
+      if (chart) { chart.destroy(); chart = null; }
+      setTimeout(() => map.resize(), 50);
+    }
+  });
+
+  // Re-add after style change
+  map.on('style.load', () => {
+    if (historyEnabled) setTimeout(() => { addAcledLayer(); fetchAcledEvents(); }, 50);
+  });
+
+  document.getElementById('chart-close').addEventListener('click', () => {
+    document.getElementById('chart-panel').classList.remove('visible');
+    if (chart) { chart.destroy(); chart = null; }
+    setTimeout(() => map.resize(), 50);
+  });
+
+  document.querySelectorAll('.chart-type-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeChartType = btn.dataset.type;
+      document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderChart(activeChartType);
+    });
+  });
+
+  function renderChart(type) {
+    if (!acledMonthlyData) return;
+    const rows = acledMonthlyData
+      .filter(r => r.dataType === type)
+      .sort((a, b) => a.year !== b.year ? a.year - b.year : a.monthIndex - b.monthIndex);
+
+    const labels = rows.map(r => `${r.month.slice(0,3)} ${r.year}`);
+    const events = rows.map(r => r.events);
+    const fatalities = rows.map(r => r.fatalities);
+
+    if (chart) chart.destroy();
+    const ctx = document.getElementById('chart-canvas').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Events',
+            data: events,
+            backgroundColor: 'rgba(59,130,246,0.5)',
+            borderColor: '#3b82f6',
+            borderWidth: 1,
+            yAxisID: 'y',
+          },
+          {
+            label: 'Fatalities',
+            data: fatalities,
+            type: 'line',
+            borderColor: '#ef4444',
+            backgroundColor: 'rgba(239,68,68,0.15)',
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: true,
+            tension: 0.3,
+            yAxisID: 'y1',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12 },
+          },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleColor: '#f8fafc',
+            bodyColor: '#94a3b8',
+            borderColor: '#334155',
+            borderWidth: 1,
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: '#475569', font: { size: 9 },
+              maxRotation: 45,
+              callback: (val, i) => i % 6 === 0 ? labels[i] : '',
+            },
+            grid: { color: '#1e293b' },
+          },
+          y: {
+            position: 'left',
+            ticks: { color: '#3b82f6', font: { size: 10 } },
+            grid: { color: '#1e293b' },
+            title: { display: true, text: 'Events', color: '#3b82f6', font: { size: 10 } },
+          },
+          y1: {
+            position: 'right',
+            ticks: { color: '#ef4444', font: { size: 10 } },
+            grid: { drawOnChartArea: false },
+            title: { display: true, text: 'Fatalities', color: '#ef4444', font: { size: 10 } },
+          },
+        },
+      },
+    });
+  }
 
   // ── Helpers ──────────────────────────────────────────
   function esc(str) {

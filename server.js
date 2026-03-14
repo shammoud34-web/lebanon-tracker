@@ -6,6 +6,8 @@ const axios = require('axios');
 const { startPipeline, runPipeline, getLastPipelineRun } = require('./ingestion/pipeline');
 const { startTelegramIngestion } = require('./ingestion/telegram');
 const Incident = require('./models/Incident');
+const AcledEvent = require('./models/AcledEvent');
+const AcledMonthly = require('./models/AcledMonthly');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -143,6 +145,37 @@ app.get('/flights', async (req, res) => {
       return res.json({ success: true, cached: true, stale: true, data: flightCache });
     }
     res.status(500).json({ success: false, error: 'Failed to fetch flight data' });
+  }
+});
+
+// GET /acled/monthly — monthly Lebanon event/fatality time series (both types)
+app.get('/acled/monthly', async (req, res) => {
+  try {
+    const rows = await AcledMonthly.find()
+      .sort({ year: 1, monthIndex: 1 })
+      .select('-__v');
+    res.json({ success: true, count: rows.length, data: rows });
+  } catch (err) {
+    console.error('[API] Error fetching acled monthly:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch monthly data' });
+  }
+});
+
+// GET /acled/events — historical geo events for map layer
+// Optional ?type=Battles,Explosions/Remote violence (comma-separated filter)
+app.get('/acled/events', async (req, res) => {
+  try {
+    const query = {};
+    if (req.query.type) {
+      query.eventType = { $in: req.query.type.split(',').map(t => t.trim()) };
+    }
+    const events = await AcledEvent.find(query)
+      .select('weekDate admin1 eventType subEventType events fatalities lat lng')
+      .sort({ weekDate: -1 });
+    res.json({ success: true, count: events.length, data: events });
+  } catch (err) {
+    console.error('[API] Error fetching acled events:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch events' });
   }
 });
 
