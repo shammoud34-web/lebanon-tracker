@@ -9,10 +9,19 @@ const rssParser = new RSSParser({
 });
 
 const RSS_FEEDS = [
-  { url: 'https://www.aljazeera.com/xml/rss/all.xml', source: 'aljazeera' },
-  { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml', source: 'bbc' },
-  { url: 'https://www.972mag.com/feed/', source: '972mag' },
-  { url: 'https://rss.nytimes.com/services/xml/rss/nyt/MiddleEast.xml', source: 'nytimes' },
+  // Lebanese / regional agencies
+  { url: 'https://www.nna-leb.gov.lb/en/rss',                          source: 'nna' },
+  { url: 'https://www.the961.com/feed',                                  source: 'the961' },
+  // International wires & broadcasters
+  { url: 'https://www.aljazeera.com/xml/rss/all.xml',                   source: 'aljazeera' },
+  { url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml',     source: 'bbc' },
+  { url: 'https://www.france24.com/en/middle-east/rss',                 source: 'france24' },
+  { url: 'https://www.theguardian.com/world/middleeast/rss',            source: 'guardian' },
+  // Middle East specialist outlets
+  { url: 'https://www.middleeastmonitor.com/feed/',                     source: 'memo' },
+  { url: 'https://www.al-monitor.com/rss',                              source: 'almonitor' },
+  { url: 'https://english.alaraby.co.uk/rss.xml',                      source: 'alaraby' },
+  { url: 'https://www.timesofisrael.com/feed/',                        source: 'timesofisrael' },
 ];
 
 const LEBANON_KEYWORDS = [
@@ -36,6 +45,42 @@ Classify as a security incident if the article involves ANY of: airstrikes, shel
 
 Only return null if the article is entirely unrelated to security, conflict, or military activity in Lebanon (e.g. sports, culture, business, weather).
 Respond in JSON only, no other text.`;
+
+const LOCATION_COORDS = {
+  'beirut':        { lat: 33.8938, lng: 35.5018 },
+  'tripoli':       { lat: 34.4367, lng: 35.8497 },
+  'sidon':         { lat: 33.5632, lng: 35.3712 },
+  'tyre':          { lat: 33.2705, lng: 35.2038 },
+  'baalbek':       { lat: 34.0042, lng: 36.2181 },
+  'nabatieh':      { lat: 33.3779, lng: 35.4836 },
+  'zahle':         { lat: 33.8500, lng: 35.9014 },
+  'zahlé':         { lat: 33.8500, lng: 35.9014 },
+  'jounieh':       { lat: 33.9808, lng: 35.6178 },
+  'chouf':         { lat: 33.6500, lng: 35.5833 },
+  'akkar':         { lat: 34.5333, lng: 36.1000 },
+  'marjayoun':     { lat: 33.3614, lng: 35.5922 },
+  'hasbaya':       { lat: 33.3986, lng: 35.6847 },
+  'rashaya':       { lat: 33.5033, lng: 35.8408 },
+  'qana':          { lat: 33.2039, lng: 35.2969 },
+  'naqoura':       { lat: 33.1167, lng: 35.1333 },
+  'hermel':        { lat: 34.3931, lng: 36.3864 },
+  'bekaa':         { lat: 33.8463, lng: 35.9014 },
+  'dahiyeh':       { lat: 33.8547, lng: 35.4900 },
+  'dahieh':        { lat: 33.8547, lng: 35.4900 },
+  'bint jbeil':    { lat: 33.1194, lng: 35.4317 },
+  'south lebanon': { lat: 33.2705, lng: 35.2038 },
+  'baabda':        { lat: 33.8333, lng: 35.5500 },
+  'ghobeiry':      { lat: 33.8600, lng: 35.4900 },
+  'haret hreik':   { lat: 33.8547, lng: 35.4900 },
+  'khiyam':        { lat: 33.3167, lng: 35.5667 },
+  'aita':          { lat: 33.1833, lng: 35.3167 },
+  'qlayaat':       { lat: 34.5833, lng: 36.0167 },
+  'lebanon':       { lat: 33.8547, lng: 35.8623 },
+};
+
+function lookupCoords(locationName) {
+  return LOCATION_COORDS[locationName.toLowerCase()] || null;
+}
 
 const HIGH_SIGNAL_WORDS = [
   'strike', 'attack', 'killed', 'wounded', 'airstrike', 'missile', 'rocket',
@@ -172,7 +217,7 @@ async function processArticle({ title, url, content, pubDate, source }) {
       source,
       severity: 'low',
       locationName: 'Lebanon',
-      coords: null,
+      coords: LOCATION_COORDS['lebanon'],
       pubDate,
     });
     return;
@@ -198,12 +243,15 @@ async function processArticle({ title, url, content, pubDate, source }) {
     return;
   }
 
-  let coords = null;
-  try {
-    coords = await geocode(classification.locationName);
-  } catch (err) {
-    console.error(`[OpenCage] Error geocoding "${classification.locationName}":`, err.message);
+  let coords = lookupCoords(classification.locationName);
+  if (!coords) {
+    try {
+      coords = await geocode(classification.locationName);
+    } catch (err) {
+      console.error(`[OpenCage] Error geocoding "${classification.locationName}":`, err.message);
+    }
   }
+  if (!coords) coords = LOCATION_COORDS['lebanon'];
 
   await saveIncident({
     title,
