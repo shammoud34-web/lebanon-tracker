@@ -214,7 +214,7 @@
     #map { position: absolute; top: 0; bottom: 0; left: 0; right: 0; }
 
     /* ── Map controls overlay ── */
-    #style-toggle, #flights-toggle {
+    #style-toggle, #flights-toggle, #history-toggle {
       position: absolute;
       top: 10px;
       z-index: 5;
@@ -229,9 +229,9 @@
     }
     #style-toggle   { right: 50px; }
     #flights-toggle { right: 140px; }
+    #history-toggle { right: 240px; }
     #style-toggle:hover, #flights-toggle:hover, #history-toggle:hover { background: #1e293b; }
     #flights-toggle.active  { background: #1e3a5f; border-color: #3b82f6; color: #93c5fd; }
-    #history-toggle { right: 240px; }
     #history-toggle.active  { background: #1a2e1a; border-color: #22c55e; color: #86efac; }
 
     /* ── Chart panel ── */
@@ -506,6 +506,8 @@
       if (mapReady) {
         addLayers();
         updateMapSource();
+        if (flightsEnabled) setTimeout(() => { addFlightsLayer(); fetchFlights(); }, 50);
+        if (historyEnabled) setTimeout(() => { addAcledLayer(); fetchAcledEvents(); }, 50);
       }
     });
   }
@@ -533,8 +535,8 @@
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
       cluster: true,
-      clusterMaxZoom: 12,
-      clusterRadius: 40,
+      clusterMaxZoom: 14,
+      clusterRadius: 30,
     });
 
     // Cluster circles
@@ -605,14 +607,55 @@
       },
     });
 
-    // Click cluster → zoom in
+    // Click cluster → zoom in, or show list if points share same coordinates
     map.on('click', 'clusters', e => {
       const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
       if (!features.length) return;
-      const clusterId = features[0].properties.cluster_id;
-      map.getSource('incidents').getClusterExpansionZoom(clusterId, (err, zoom) => {
+      const feature = features[0];
+      const clusterId = feature.properties.cluster_id;
+      const coords = feature.geometry.coordinates;
+      const source = map.getSource('incidents');
+
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
         if (err) return;
-        map.easeTo({ center: features[0].geometry.coordinates, zoom });
+        // If already at or past expansion zoom, points overlap — show list popup instead
+        if (zoom > map.getZoom() + 0.5) {
+          map.easeTo({ center: coords, zoom });
+        } else {
+          // Already zoomed in enough — fetch all leaves and show list
+          source.getClusterLeaves(clusterId, 100, 0, (err2, leaves) => {
+            if (err2 || !leaves) return;
+            if (activePopup) activePopup.remove();
+            const SEV_ORDER = { critical: 0, high: 1, medium: 2 };
+            leaves.sort((a, b) => (SEV_ORDER[a.properties.severity] ?? 9) - (SEV_ORDER[b.properties.severity] ?? 9));
+            const rows = leaves.map(l => {
+              const p = l.properties;
+              const badgeBg    = { critical: '#7f1d1d', high: '#7c2d12', medium: '#713f12' }[p.severity] || '#1e293b';
+              const badgeColor = { critical: '#fca5a5', high: '#fdba74', medium: '#fcd34d' }[p.severity] || '#94a3b8';
+              return `<div style="padding:6px 0;border-bottom:1px solid #334155;cursor:pointer" data-id="${esc(p.id)}">
+                <span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:${badgeBg};color:${badgeColor};text-transform:uppercase;margin-right:5px">${esc(p.severity)}</span>
+                <span style="font-size:11px;color:#cbd5e1">${esc((p.desc || p.name || '').substring(0, 60))}${(p.desc || '').length > 60 ? '…' : ''}</span>
+                <div style="font-size:10px;color:#475569;margin-top:2px">${esc(p.name)} · ${esc(p.date)}</div>
+              </div>`;
+            }).join('');
+            activePopup = new mapboxgl.Popup({ closeButton: true, maxWidth: '300px', offset: 12 })
+              .setLngLat(coords)
+              .setHTML(`
+                <div>
+                  <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${leaves.length} incidents at this location</div>
+                  <div style="max-height:220px;overflow-y:auto">${rows}</div>
+                </div>`)
+              .addTo(map);
+            // Allow clicking items in the popup to select them
+            activePopup.getElement().querySelectorAll('[data-id]').forEach(el => {
+              el.addEventListener('click', () => {
+                selectItem(el.dataset.id, false);
+                if (activePopup) { activePopup.remove(); activePopup = null; }
+              });
+            });
+            activePopup.on('close', () => { activePopup = null; clearSelected(); });
+          });
+        }
       });
     });
 
@@ -944,13 +987,6 @@
     }
   });
 
-  // Re-add flights layer after style change if enabled
-  map.on('style.load', () => {
-    if (flightsEnabled) {
-      setTimeout(() => { addFlightsLayer(); fetchFlights(); }, 50);
-    }
-  });
-
   // ── ACLED historical events layer ────────────────────
   const ACLED_COLORS = {
     'Battles':                    '#ef4444',
@@ -1064,11 +1100,6 @@
       if (chart) { chart.destroy(); chart = null; }
       setTimeout(() => map.resize(), 50);
     }
-  });
-
-  // Re-add after style change
-  map.on('style.load', () => {
-    if (historyEnabled) setTimeout(() => { addAcledLayer(); fetchAcledEvents(); }, 50);
   });
 
   document.getElementById('chart-close').addEventListener('click', () => {
