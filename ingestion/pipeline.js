@@ -21,7 +21,6 @@ const RSS_FEEDS = [
   { url: 'https://www.middleeastmonitor.com/feed/',                     source: 'memo' },
   { url: 'https://www.al-monitor.com/rss',                              source: 'almonitor' },
   { url: 'https://english.alaraby.co.uk/rss.xml',                      source: 'alaraby' },
-  { url: 'https://www.timesofisrael.com/feed/',                        source: 'timesofisrael' },
 ];
 
 const LEBANON_KEYWORDS = [
