@@ -607,7 +607,7 @@
       },
     });
 
-    // Click cluster → zoom in, or show list if points share same coordinates
+    // Click cluster → always show full list popup; zoom in if not yet at expansion zoom
     map.on('click', 'clusters', e => {
       const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
       if (!features.length) return;
@@ -616,46 +616,45 @@
       const coords = feature.geometry.coordinates;
       const source = map.getSource('incidents');
 
-      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-        if (err) return;
-        // If already at or past expansion zoom, points overlap — show list popup instead
-        if (zoom > map.getZoom() + 0.5) {
-          map.easeTo({ center: coords, zoom });
-        } else {
-          // Already zoomed in enough — fetch all leaves and show list
-          source.getClusterLeaves(clusterId, 100, 0, (err2, leaves) => {
-            if (err2 || !leaves) return;
-            if (activePopup) activePopup.remove();
-            const SEV_ORDER = { critical: 0, high: 1, medium: 2 };
-            leaves.sort((a, b) => (SEV_ORDER[a.properties.severity] ?? 9) - (SEV_ORDER[b.properties.severity] ?? 9));
-            const rows = leaves.map(l => {
-              const p = l.properties;
-              const badgeBg    = { critical: '#7f1d1d', high: '#7c2d12', medium: '#713f12' }[p.severity] || '#1e293b';
-              const badgeColor = { critical: '#fca5a5', high: '#fdba74', medium: '#fcd34d' }[p.severity] || '#94a3b8';
-              return `<div style="padding:6px 0;border-bottom:1px solid #334155;cursor:pointer" data-id="${esc(p.id)}">
-                <span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:${badgeBg};color:${badgeColor};text-transform:uppercase;margin-right:5px">${esc(p.severity)}</span>
-                <span style="font-size:11px;color:#cbd5e1">${esc((p.desc || p.name || '').substring(0, 60))}${(p.desc || '').length > 60 ? '…' : ''}</span>
-                <div style="font-size:10px;color:#475569;margin-top:2px">${esc(p.name)} · ${esc(p.date)}</div>
-              </div>`;
-            }).join('');
-            activePopup = new mapboxgl.Popup({ closeButton: true, maxWidth: '300px', offset: 12 })
-              .setLngLat(coords)
-              .setHTML(`
-                <div>
-                  <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${leaves.length} incidents at this location</div>
-                  <div style="max-height:220px;overflow-y:auto">${rows}</div>
-                </div>`)
-              .addTo(map);
-            // Allow clicking items in the popup to select them
-            activePopup.getElement().querySelectorAll('[data-id]').forEach(el => {
-              el.addEventListener('click', () => {
-                selectItem(el.dataset.id, false);
-                if (activePopup) { activePopup.remove(); activePopup = null; }
-              });
-            });
-            activePopup.on('close', () => { activePopup = null; clearSelected(); });
+      // Fetch all leaves first, then decide on zoom
+      source.getClusterLeaves(clusterId, 500, 0, (err, leaves) => {
+        if (err || !leaves) return;
+
+        // Zoom in if needed so the cluster starts to break apart
+        source.getClusterExpansionZoom(clusterId, (err2, zoom) => {
+          if (!err2 && zoom > map.getZoom() + 0.5) {
+            map.easeTo({ center: coords, zoom });
+          }
+        });
+
+        if (activePopup) activePopup.remove();
+        const SEV_ORDER = { critical: 0, high: 1, medium: 2 };
+        leaves.sort((a, b) => (SEV_ORDER[a.properties.severity] ?? 9) - (SEV_ORDER[b.properties.severity] ?? 9));
+        const rows = leaves.map(l => {
+          const p = l.properties;
+          const badgeBg    = { critical: '#7f1d1d', high: '#7c2d12', medium: '#713f12' }[p.severity] || '#1e293b';
+          const badgeColor = { critical: '#fca5a5', high: '#fdba74', medium: '#fcd34d' }[p.severity] || '#94a3b8';
+          return `<div style="padding:6px 0;border-bottom:1px solid #334155;cursor:pointer" data-id="${esc(p.id)}">
+            <span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;background:${badgeBg};color:${badgeColor};text-transform:uppercase;margin-right:5px">${esc(p.severity)}</span>
+            <span style="font-size:11px;color:#cbd5e1">${esc((p.desc || p.name || '').substring(0, 70))}${(p.desc || '').length > 70 ? '…' : ''}</span>
+            <div style="font-size:10px;color:#475569;margin-top:2px">${esc(p.name)} · ${esc(p.date)}</div>
+          </div>`;
+        }).join('');
+        activePopup = new mapboxgl.Popup({ closeButton: true, maxWidth: '300px', offset: 12 })
+          .setLngLat(coords)
+          .setHTML(`
+            <div>
+              <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">${leaves.length} incidents here</div>
+              <div style="max-height:240px;overflow-y:auto">${rows}</div>
+            </div>`)
+          .addTo(map);
+        activePopup.getElement().querySelectorAll('[data-id]').forEach(el => {
+          el.addEventListener('click', () => {
+            selectItem(el.dataset.id, false);
+            if (activePopup) { activePopup.remove(); activePopup = null; }
           });
-        }
+        });
+        activePopup.on('close', () => { activePopup = null; clearSelected(); });
       });
     });
 
